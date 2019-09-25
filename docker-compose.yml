@@ -1,0 +1,112 @@
+version: '3'
+services:
+
+  postgresql:
+    image: docker.bintray.io/postgres:9.6.11
+    container_name: postgresql
+    networks:
+      concourse-net: {}
+    ports:
+     - 5432:5432
+    environment:
+     - POSTGRES_DB=artifactory
+     - POSTGRES_USER=artifactory
+     - POSTGRES_PASSWORD=password
+    restart: always
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 32000
+        hard: 40000
+
+  artifactory:
+    image: docker.bintray.io/jfrog/artifactory-pro:6.12.2
+    container_name: artifactory
+    networks:
+      concourse-net:
+    ports:
+     - 8081:8081
+    depends_on:
+     - postgresql
+    links:
+     - postgresql
+    environment:
+     - DB_TYPE=postgresql
+     - DB_USER=artifactory
+     - DB_PASSWORD=password
+    restart: always
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 32000
+        hard: 40000
+
+  nginx:
+    image: docker.bintray.io/jfrog/nginx-artifactory-pro:6.12.2
+    container_name: nginx
+    networks:
+      concourse-net:
+        aliases:
+          - docker.artifactory
+          - docker-remote.artifactory
+          - docker-local.artifactory
+    ports:
+     - 80:80
+     - 443:443
+    depends_on:
+     - artifactory
+    links:
+     - artifactory
+    environment:
+     - ART_BASE_URL=http://artifactory:8081/artifactory
+     - SSL=true
+    restart: always
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 32000
+        hard: 40000
+
+  db:
+    image: postgres
+    networks:
+      concourse-net: {}
+    environment:
+      POSTGRES_DB: concourse
+      POSTGRES_USER: concourse_user
+      POSTGRES_PASSWORD: concourse_pass
+
+  web:
+    image: concourse/concourse
+    networks:
+      concourse-net: {}
+    command: web
+    links: [db]
+    depends_on: [db]
+    ports: ["8080:8080"]
+    volumes: ["./keys/web:/concourse-keys"]
+    environment:
+      CONCOURSE_EXTERNAL_URL: http://localhost:8080
+      CONCOURSE_POSTGRES_HOST: db
+      CONCOURSE_POSTGRES_USER: concourse_user
+      CONCOURSE_POSTGRES_PASSWORD: concourse_pass
+      CONCOURSE_POSTGRES_DATABASE: concourse
+      CONCOURSE_ADD_LOCAL_USER: test:test
+      CONCOURSE_MAIN_TEAM_LOCAL_USER: test
+
+  worker:
+    networks:
+      concourse-net: {}
+    image: concourse/concourse
+    command: worker
+    privileged: true
+    depends_on: [web]
+    volumes: ["./keys/worker:/concourse-keys"]
+    links: [web]
+    stop_signal: SIGUSR2
+    environment:
+      CONCOURSE_TSA_HOST: web:2222
+
+
+networks:
+  concourse-net:

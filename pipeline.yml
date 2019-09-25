@@ -1,0 +1,24 @@
+resources:
+  - type: docker-image
+    name: image
+    check_every: 30m
+    source:
+      repository: docker.artifactory/cirocosta/test
+      username: admin
+      password: password
+      insecure_registries: [ '0.0.0.0/0' ]
+      tag: latest
+
+  - type: time
+    name: ticker
+    check_every: 15s
+    source:
+      interval: 1s
+
+jobs:
+  - name: test
+    plan:
+      - get: ticker
+        trigger: true
+      - get: image
+        trigger: true
